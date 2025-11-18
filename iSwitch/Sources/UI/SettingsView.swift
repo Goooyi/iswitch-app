@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import KeyboardShortcuts
 
 struct SettingsView: View {
     @EnvironmentObject var hotkeyManager: HotkeyManager
@@ -43,13 +42,15 @@ struct GeneralSettingsView: View {
             Section {
                 Toggle("Enable iSwitch", isOn: $hotkeyManager.isEnabled)
 
-                HStack {
-                    Text("Trigger Shortcut")
-                    Spacer()
-                    KeyboardShortcuts.Recorder(for: .triggerModifier)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Trigger Modifiers")
+                    ModifierPicker(config: $hotkeyManager.modifierConfig)
+                    Text("Current: \(hotkeyManager.modifierConfig.displayString) + Letter")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
-                Text("Record your preferred modifier keys (e.g., ⌘, ⌥⇧). Then hold those keys and press a letter to switch apps.")
+                Text("Hold the selected modifiers and press a letter key to switch to the assigned app.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -81,6 +82,9 @@ struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onChange(of: hotkeyManager.modifierConfig) { _, _ in
+            hotkeyManager.saveAssignments()
+        }
     }
 
     private func openAccessibilitySettings() {

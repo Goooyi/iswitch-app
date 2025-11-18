@@ -1,7 +1,6 @@
 import Foundation
 import AppKit
 import Combine
-import KeyboardShortcuts
 
 /// Represents an app assignment for display purposes
 struct AppAssignment: Codable, Identifiable, Hashable {
@@ -56,6 +55,7 @@ struct HotkeyAssignment: Codable, Identifiable {
 final class HotkeyManager: ObservableObject {
     @Published var assignments: [Character: HotkeyAssignment] = [:]
     @Published var isEnabled: Bool = true
+    @Published var modifierConfig: ModifierConfig = .default
 
     // Efficient reverse lookup: bundleId -> key
     private var bundleIdToKey: [String: Character] = [:]
@@ -66,43 +66,18 @@ final class HotkeyManager: ObservableObject {
     private let userDefaults = UserDefaults.standard
     private let assignmentsKey = "hotkeyAssignments_v2"
     private let isEnabledKey = "isEnabled"
+    private let modifierConfigKey = "modifierConfig"
 
     // Debounce saves to avoid excessive disk I/O
     private var saveWorkItem: DispatchWorkItem?
 
     init() {
-        // Set default shortcut if none exists
-        if KeyboardShortcuts.getShortcut(for: .triggerModifier) == nil {
-            // Default to Right Command + Space (user will only use the modifiers)
-            KeyboardShortcuts.setShortcut(.init(.space, modifiers: .command), for: .triggerModifier)
-        }
         loadAssignments()
-    }
-
-    /// Get the current trigger modifiers from KeyboardShortcuts
-    var triggerModifiers: NSEvent.ModifierFlags {
-        KeyboardShortcuts.getShortcut(for: .triggerModifier)?.modifiers ?? .command
     }
 
     /// Check if the given event flags match our trigger modifiers
     func matchesTriggerModifiers(_ flags: CGEventFlags) -> Bool {
-        let modifiers = triggerModifiers
-
-        // Check each required modifier
-        if modifiers.contains(.command) {
-            guard flags.contains(.maskCommand) else { return false }
-        }
-        if modifiers.contains(.option) {
-            guard flags.contains(.maskAlternate) else { return false }
-        }
-        if modifiers.contains(.control) {
-            guard flags.contains(.maskControl) else { return false }
-        }
-        if modifiers.contains(.shift) {
-            guard flags.contains(.maskShift) else { return false }
-        }
-
-        return true
+        modifierConfig.matches(flags)
     }
 
     /// Assign a key to an application (adds to existing if key already has apps)
@@ -261,6 +236,15 @@ final class HotkeyManager: ObservableObject {
             isEnabled = userDefaults.bool(forKey: isEnabledKey)
         }
 
+        // Load modifier config
+        if let data = userDefaults.data(forKey: modifierConfigKey) {
+            do {
+                modifierConfig = try PropertyListDecoder().decode(ModifierConfig.self, from: data)
+            } catch {
+                print("Failed to load modifier config: \(error)")
+            }
+        }
+
         // Load assignments using PropertyListDecoder (more efficient than JSON)
         guard let data = userDefaults.data(forKey: assignmentsKey) else { return }
 
@@ -289,6 +273,14 @@ final class HotkeyManager: ObservableObject {
 
         // Save enabled state
         userDefaults.set(isEnabled, forKey: isEnabledKey)
+
+        // Save modifier config
+        do {
+            let data = try PropertyListEncoder().encode(modifierConfig)
+            userDefaults.set(data, forKey: modifierConfigKey)
+        } catch {
+            print("Failed to save modifier config: \(error)")
+        }
 
         // Save assignments using PropertyListEncoder (more efficient than JSON)
         do {
