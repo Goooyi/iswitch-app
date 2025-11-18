@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:5.7
 import PackageDescription
 
 let package = Package(
@@ -13,12 +13,7 @@ let package = Package(
         .executableTarget(
             name: "iSwitch",
             path: "Sources",
-            resources: [
-                .process("Resources")
-            ],
-            linkerSettings: [
-                .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "Sources/Resources/Info.plist"])
-            ]
+            exclude: ["Resources/Info.plist"]
         )
     ]
 )
