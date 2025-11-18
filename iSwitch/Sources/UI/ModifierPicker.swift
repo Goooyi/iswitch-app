@@ -19,8 +19,16 @@ struct ModifierConfig: Codable, Equatable {
         return flags
     }
 
+    /// Check if at least one modifier is selected
+    var hasModifiers: Bool {
+        command || option || control || shift
+    }
+
     /// Check if CGEventFlags contain our required modifiers
     func matches(_ flags: CGEventFlags) -> Bool {
+        // Must have at least one modifier configured
+        guard hasModifiers else { return false }
+
         // Check required modifiers are present
         if command && !flags.contains(.maskCommand) { return false }
         if option && !flags.contains(.maskAlternate) { return false }

@@ -162,14 +162,13 @@ final class HotkeyManager: ObservableObject {
         }
 
         let currentIndex = cycleIndex[lowercaseKey] ?? 0
-        let nextIndex = (currentIndex + 1) % assignment.apps.count
 
         // Only update cycle index if there are multiple apps
         if assignment.apps.count > 1 {
-            cycleIndex[lowercaseKey] = nextIndex
+            cycleIndex[lowercaseKey] = (currentIndex + 1) % assignment.apps.count
         }
 
-        return assignment.apps[nextIndex].bundleIdentifier
+        return assignment.apps[currentIndex].bundleIdentifier
     }
 
     /// Get the key assigned to a bundle ID - O(1) lookup
