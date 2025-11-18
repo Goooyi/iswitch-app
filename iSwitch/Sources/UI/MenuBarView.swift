@@ -7,15 +7,20 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            // Enable/Disable toggle - compact
-            Toggle(isOn: $hotkeyManager.isEnabled) {
-                Text("Enabled")
-                    .font(.caption)
+            // Enable/Disable button (Toggle doesn't work well in MenuBarExtra)
+            Button(action: {
+                hotkeyManager.isEnabled.toggle()
+            }) {
+                HStack {
+                    Image(systemName: hotkeyManager.isEnabled ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(hotkeyManager.isEnabled ? .green : .secondary)
+                    Text(hotkeyManager.isEnabled ? "Enabled" : "Disabled")
+                        .font(.caption)
+                }
             }
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            .buttonStyle(.plain)
             .padding(.horizontal, 8)
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
 
             Divider()
 
@@ -64,15 +69,12 @@ struct MenuBarView: View {
             .padding(.vertical, 2)
 
             Button(action: {
-                // Open settings and bring to front
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
             }) {
                 Label("Settings...", systemImage: "gear")
                     .font(.caption)
             }
             .buttonStyle(.plain)
-            .keyboardShortcut(",", modifiers: .command)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
 
@@ -90,6 +92,26 @@ struct MenuBarView: View {
         }
         .padding(.vertical, 4)
         .frame(width: 200)
+    }
+
+    private func openSettings() {
+        // Try multiple methods to open settings
+        if #available(macOS 14.0, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+
+        // Ensure app comes to front
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            // Also try to bring windows to front
+            for window in NSApp.windows {
+                if window.title.contains("Settings") || window.title.contains("iSwitch") {
+                    window.makeKeyAndOrderFront(nil)
+                }
+            }
+        }
     }
 }
 
