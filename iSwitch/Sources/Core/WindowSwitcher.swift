@@ -4,6 +4,7 @@ import Carbon.HIToolbox
 
 /// Coordinates keyboard events with app switching
 /// This is the main logic component that ties everything together
+@MainActor
 final class WindowSwitcher {
     private let appManager: AppManager
     private let hotkeyManager: HotkeyManager
@@ -39,8 +40,8 @@ final class WindowSwitcher {
             return false
         }
 
-        // Look up the assigned bundle ID for this key
-        guard let bundleId = hotkeyManager.bundleId(for: char) else {
+        // Get the next bundle ID for this key (cycles through multiple apps)
+        guard let bundleId = hotkeyManager.nextBundleId(for: char) else {
             return false
         }
 

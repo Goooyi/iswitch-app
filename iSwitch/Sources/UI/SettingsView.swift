@@ -134,6 +134,7 @@ struct HotkeysSettingsView: View {
                             hotkeyManager.removeAssignment(for: letter)
                         }
                     )
+                    .environmentObject(hotkeyManager)
                 }
             }
             .listStyle(.inset)
@@ -162,6 +163,7 @@ struct HotkeyRow: View {
     let appManager: AppManager
     let onAssign: () -> Void
     let onRemove: () -> Void
+    @EnvironmentObject var hotkeyManager: HotkeyManager
 
     var body: some View {
         HStack {
@@ -172,23 +174,45 @@ struct HotkeyRow: View {
                 .frame(width: 30)
 
             if let assignment = assignment {
-                // Show assigned app
-                if let app = appManager.app(forBundleId: assignment.bundleIdentifier) {
-                    Image(nsImage: app.icon)
-                        .resizable()
-                        .frame(width: 24, height: 24)
+                // Show all assigned apps with icons
+                HStack(spacing: 4) {
+                    ForEach(assignment.apps) { appAssignment in
+                        if let app = appManager.app(forBundleId: appAssignment.bundleIdentifier) {
+                            Image(nsImage: app.icon)
+                                .resizable()
+                                .frame(width: 20, height: 20)
+                                .help(appAssignment.appName)
+                        }
+                    }
                 }
 
-                Text(assignment.appName)
-                    .lineLimit(1)
+                // Show app names (truncated if multiple)
+                if assignment.apps.count == 1 {
+                    Text(assignment.appName)
+                        .lineLimit(1)
+                } else {
+                    Text("\(assignment.apps.count) apps")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
 
                 Spacer()
 
+                // Add more apps button
+                Button(action: onAssign) {
+                    Image(systemName: "plus.circle")
+                        .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Add another app to this key")
+
+                // Remove all button
                 Button(action: onRemove) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help("Remove all apps from this key")
             } else {
                 // Show unassigned state
                 Text("Not assigned")

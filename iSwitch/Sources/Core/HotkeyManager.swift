@@ -2,21 +2,35 @@ import Foundation
 import AppKit
 import Combine
 
-/// Represents a hotkey assignment
+/// Represents an app assignment for display purposes
+struct AppAssignment: Codable, Identifiable, Hashable {
+    var id: String { bundleIdentifier }
+    let bundleIdentifier: String
+    let appName: String
+}
+
+/// Represents a hotkey assignment with multiple apps for cycling
 struct HotkeyAssignment: Codable, Identifiable {
     var id: Character { key }
     let key: Character
-    let bundleIdentifier: String
-    let appName: String
+    var apps: [AppAssignment]
+
+    var primaryApp: AppAssignment? { apps.first }
+    var appName: String { apps.map { $0.appName }.joined(separator: ", ") }
+    var bundleIdentifier: String { apps.first?.bundleIdentifier ?? "" }
 
     enum CodingKeys: String, CodingKey {
-        case key, bundleIdentifier, appName
+        case key, apps
+    }
+
+    init(key: Character, apps: [AppAssignment]) {
+        self.key = key
+        self.apps = apps
     }
 
     init(key: Character, bundleIdentifier: String, appName: String) {
         self.key = key
-        self.bundleIdentifier = bundleIdentifier
-        self.appName = appName
+        self.apps = [AppAssignment(bundleIdentifier: bundleIdentifier, appName: appName)]
     }
 
     init(from decoder: Decoder) throws {
@@ -26,15 +40,13 @@ struct HotkeyAssignment: Codable, Identifiable {
             throw DecodingError.dataCorruptedError(forKey: .key, in: container, debugDescription: "Empty key")
         }
         self.key = char
-        self.bundleIdentifier = try container.decode(String.self, forKey: .bundleIdentifier)
-        self.appName = try container.decode(String.self, forKey: .appName)
+        self.apps = try container.decode([AppAssignment].self, forKey: .apps)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(String(key), forKey: .key)
-        try container.encode(bundleIdentifier, forKey: .bundleIdentifier)
-        try container.encode(appName, forKey: .appName)
+        try container.encode(apps, forKey: .apps)
     }
 }
 
@@ -47,15 +59,17 @@ enum TriggerModifier: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .rightCommand: return "Right Command"
-        case .leftCommand: return "Left Command"
-        case .rightOption: return "Right Option"
-        case .leftOption: return "Left Option"
+        case .rightCommand: return "Right ⌘"
+        case .leftCommand: return "Left ⌘"
+        case .rightOption: return "Right ⌥"
+        case .leftOption: return "Left ⌥"
         }
     }
 }
 
 /// Manages hotkey assignments with efficient storage and lookup
+/// Supports multiple apps per key for cycling
+@MainActor
 final class HotkeyManager: ObservableObject {
     @Published var assignments: [Character: HotkeyAssignment] = [:]
     @Published var triggerModifier: TriggerModifier = .rightCommand
@@ -64,8 +78,11 @@ final class HotkeyManager: ObservableObject {
     // Efficient reverse lookup: bundleId -> key
     private var bundleIdToKey: [String: Character] = [:]
 
+    // Track cycling state: key -> last activated index
+    private var cycleIndex: [Character: Int] = [:]
+
     private let userDefaults = UserDefaults.standard
-    private let assignmentsKey = "hotkeyAssignments"
+    private let assignmentsKey = "hotkeyAssignments_v2"
     private let triggerModifierKey = "triggerModifier"
     private let isEnabledKey = "isEnabled"
 
@@ -76,47 +93,96 @@ final class HotkeyManager: ObservableObject {
         loadAssignments()
     }
 
-    /// Assign a key to an application
+    /// Assign a key to an application (adds to existing if key already has apps)
     func assign(key: Character, to bundleId: String, appName: String) {
         let lowercaseKey = Character(key.lowercased())
 
-        // Remove old assignment for this key
-        if let oldAssignment = assignments[lowercaseKey] {
-            bundleIdToKey.removeValue(forKey: oldAssignment.bundleIdentifier)
-        }
-
-        // Remove old assignment for this bundle ID
+        // Remove old assignment for this bundle ID from any key
         if let oldKey = bundleIdToKey[bundleId] {
-            assignments.removeValue(forKey: oldKey)
+            if var oldAssignment = assignments[oldKey] {
+                oldAssignment.apps.removeAll { $0.bundleIdentifier == bundleId }
+                if oldAssignment.apps.isEmpty {
+                    assignments.removeValue(forKey: oldKey)
+                } else {
+                    assignments[oldKey] = oldAssignment
+                }
+            }
         }
 
-        let assignment = HotkeyAssignment(key: lowercaseKey, bundleIdentifier: bundleId, appName: appName)
-        assignments[lowercaseKey] = assignment
-        bundleIdToKey[bundleId] = lowercaseKey
+        // Add to existing assignment or create new
+        let newApp = AppAssignment(bundleIdentifier: bundleId, appName: appName)
+        if var existing = assignments[lowercaseKey] {
+            // Don't add duplicate
+            if !existing.apps.contains(where: { $0.bundleIdentifier == bundleId }) {
+                existing.apps.append(newApp)
+                assignments[lowercaseKey] = existing
+            }
+        } else {
+            assignments[lowercaseKey] = HotkeyAssignment(key: lowercaseKey, apps: [newApp])
+        }
 
+        bundleIdToKey[bundleId] = lowercaseKey
         scheduleSave()
     }
 
-    /// Remove assignment for a key
+    /// Remove assignment for a key (removes all apps)
     func removeAssignment(for key: Character) {
         let lowercaseKey = Character(key.lowercased())
         if let assignment = assignments.removeValue(forKey: lowercaseKey) {
-            bundleIdToKey.removeValue(forKey: assignment.bundleIdentifier)
+            for app in assignment.apps {
+                bundleIdToKey.removeValue(forKey: app.bundleIdentifier)
+            }
         }
+        cycleIndex.removeValue(forKey: lowercaseKey)
+        scheduleSave()
+    }
+
+    /// Remove a specific app from a key's assignment
+    func removeApp(_ bundleId: String, from key: Character) {
+        let lowercaseKey = Character(key.lowercased())
+        guard var assignment = assignments[lowercaseKey] else { return }
+
+        assignment.apps.removeAll { $0.bundleIdentifier == bundleId }
+        bundleIdToKey.removeValue(forKey: bundleId)
+
+        if assignment.apps.isEmpty {
+            assignments.removeValue(forKey: lowercaseKey)
+            cycleIndex.removeValue(forKey: lowercaseKey)
+        } else {
+            assignments[lowercaseKey] = assignment
+        }
+
         scheduleSave()
     }
 
     /// Remove assignment for a bundle ID
     func removeAssignment(forBundleId bundleId: String) {
-        if let key = bundleIdToKey.removeValue(forKey: bundleId) {
-            assignments.removeValue(forKey: key)
+        if let key = bundleIdToKey[bundleId] {
+            removeApp(bundleId, from: key)
         }
-        scheduleSave()
     }
 
-    /// Get the bundle ID assigned to a key - O(1) lookup
-    func bundleId(for key: Character) -> String? {
-        assignments[Character(key.lowercased())]?.bundleIdentifier
+    /// Get all bundle IDs assigned to a key - for cycling
+    func bundleIds(for key: Character) -> [String] {
+        assignments[Character(key.lowercased())]?.apps.map { $0.bundleIdentifier } ?? []
+    }
+
+    /// Get the next bundle ID to activate (for cycling)
+    func nextBundleId(for key: Character) -> String? {
+        let lowercaseKey = Character(key.lowercased())
+        guard let assignment = assignments[lowercaseKey], !assignment.apps.isEmpty else {
+            return nil
+        }
+
+        let currentIndex = cycleIndex[lowercaseKey] ?? 0
+        let nextIndex = (currentIndex + 1) % assignment.apps.count
+
+        // Only update cycle index if there are multiple apps
+        if assignment.apps.count > 1 {
+            cycleIndex[lowercaseKey] = nextIndex
+        }
+
+        return assignment.apps[nextIndex].bundleIdentifier
     }
 
     /// Get the key assigned to a bundle ID - O(1) lookup
@@ -136,48 +202,42 @@ final class HotkeyManager: ObservableObject {
     }
 
     /// Auto-assign keys based on app name first letter
+    /// Apps with same first letter will be grouped together for cycling
     func autoAssign(apps: [RunningApp]) {
+        // Group apps by first letter
+        var appsByLetter: [Character: [RunningApp]] = [:]
+
         for app in apps {
             // Skip if already assigned
             if bundleIdToKey[app.bundleIdentifier] != nil {
                 continue
             }
 
-            // Try first letter of app name
-            if let firstChar = app.name.first?.lowercased().first,
-               firstChar.isLetter,
-               assignments[firstChar] == nil {
-                assign(key: firstChar, to: app.bundleIdentifier, appName: app.name)
-                continue
+            if let firstChar = app.name.first?.lowercased().first, firstChar.isLetter {
+                appsByLetter[firstChar, default: []].append(app)
             }
+        }
 
-            // Try other letters in app name
-            for char in app.name.lowercased() where char.isLetter {
-                if assignments[char] == nil {
-                    assign(key: char, to: app.bundleIdentifier, appName: app.name)
-                    break
-                }
+        // Assign each group
+        for (letter, letterApps) in appsByLetter {
+            for app in letterApps {
+                assign(key: letter, to: app.bundleIdentifier, appName: app.name)
             }
         }
     }
 
     /// Suggest a key for an app based on its name
     func suggestKey(for app: RunningApp) -> Character? {
-        // Try first letter
-        if let firstChar = app.name.first?.lowercased().first,
-           firstChar.isLetter,
-           assignments[firstChar] == nil {
+        // Try first letter (can share with other apps)
+        if let firstChar = app.name.first?.lowercased().first, firstChar.isLetter {
             return firstChar
         }
 
         // Try other letters
         for char in app.name.lowercased() where char.isLetter {
-            if assignments[char] == nil {
-                return char
-            }
+            return char
         }
 
-        // Return any available key
         return availableKeys.first
     }
 
@@ -207,7 +267,9 @@ final class HotkeyManager: ObservableObject {
 
             for assignment in assignmentArray {
                 assignments[assignment.key] = assignment
-                bundleIdToKey[assignment.bundleIdentifier] = assignment.key
+                for app in assignment.apps {
+                    bundleIdToKey[app.bundleIdentifier] = assignment.key
+                }
             }
         } catch {
             print("Failed to load hotkey assignments: \(error)")
