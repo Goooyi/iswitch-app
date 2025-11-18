@@ -112,8 +112,8 @@ final class AppManager: ObservableObject {
             return false
         }
 
-        // Use activate with options for reliable switching
-        return nsApp.activate(options: [.activateIgnoringOtherApps])
+        // Use activate for macOS 14+
+        return nsApp.activate()
     }
 
     /// Get all regular (non-background) apps sorted by name

@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start keyboard monitoring
         keyboardMonitor = KeyboardMonitor { [weak self] event in
-            self?.windowSwitcher?.handleKeyEvent(event)
+            self?.windowSwitcher?.handleKeyEvent(event) ?? false
         }
         keyboardMonitor?.start()
 
@@ -56,8 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkAccessibilityPermissions() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        let trusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        // Use the string value directly for Swift 6 concurrency safety
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        let trusted = AXIsProcessTrustedWithOptions(options)
 
         if !trusted {
             print("iSwitch requires accessibility permissions to monitor keyboard events.")
