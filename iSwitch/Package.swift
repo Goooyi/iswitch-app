@@ -1,10 +1,10 @@
-// swift-tools-version:5.7
+// swift-tools-version:6.0
 import PackageDescription
 
 let package = Package(
     name: "iSwitch",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(name: "iSwitch", targets: ["iSwitch"])
@@ -13,7 +13,10 @@ let package = Package(
         .executableTarget(
             name: "iSwitch",
             path: "Sources",
-            exclude: ["Resources/Info.plist"]
+            exclude: ["Resources/Info.plist"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
         )
     ]
 )
