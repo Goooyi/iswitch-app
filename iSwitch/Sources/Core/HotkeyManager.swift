@@ -69,7 +69,6 @@ enum TriggerModifier: String, Codable, CaseIterable {
 
 /// Manages hotkey assignments with efficient storage and lookup
 /// Supports multiple apps per key for cycling
-@MainActor
 final class HotkeyManager: ObservableObject {
     @Published var assignments: [Character: HotkeyAssignment] = [:]
     @Published var triggerModifier: TriggerModifier = .rightCommand

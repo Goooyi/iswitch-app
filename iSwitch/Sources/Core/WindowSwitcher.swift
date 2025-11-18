@@ -4,7 +4,6 @@ import Carbon.HIToolbox
 
 /// Coordinates keyboard events with app switching
 /// This is the main logic component that ties everything together
-@MainActor
 final class WindowSwitcher {
     private let appManager: AppManager
     private let hotkeyManager: HotkeyManager

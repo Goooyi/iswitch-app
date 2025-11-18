@@ -63,10 +63,16 @@ struct MenuBarView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
 
-            SettingsLink {
+            Button(action: {
+                // Open settings and bring to front
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }) {
                 Label("Settings...", systemImage: "gear")
                     .font(.caption)
             }
+            .buttonStyle(.plain)
+            .keyboardShortcut(",", modifiers: .command)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
 

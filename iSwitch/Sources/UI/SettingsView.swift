@@ -235,6 +235,7 @@ struct AppPickerView: View {
 
     @EnvironmentObject var appManager: AppManager
     @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
 
     var filteredApps: [RunningApp] {
         if searchText.isEmpty {
@@ -254,13 +255,21 @@ struct AppPickerView: View {
                     .font(.headline)
                 Spacer()
                 Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
             }
             .padding()
 
             // Search
             TextField("Search apps...", text: $searchText)
                 .textFieldStyle(.roundedBorder)
+                .focused($isSearchFocused)
                 .padding(.horizontal)
+                .onAppear {
+                    // Delay focus to ensure the view is ready
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isSearchFocused = true
+                    }
+                }
 
             // App list
             List(filteredApps) { app in
