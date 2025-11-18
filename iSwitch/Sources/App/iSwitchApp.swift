@@ -20,6 +20,7 @@ struct iSwitchApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let appManager = AppManager()
     let hotkeyManager = HotkeyManager()
