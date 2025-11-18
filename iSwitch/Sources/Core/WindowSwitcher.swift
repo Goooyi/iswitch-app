@@ -8,9 +8,6 @@ final class WindowSwitcher {
     private let appManager: AppManager
     private let hotkeyManager: HotkeyManager
 
-    // Track modifier key state for detecting right vs left
-    private var lastModifierFlags: CGEventFlags = []
-
     init(appManager: AppManager, hotkeyManager: HotkeyManager) {
         self.appManager = appManager
         self.hotkeyManager = hotkeyManager
@@ -24,13 +21,11 @@ final class WindowSwitcher {
 
         // Only process key down events for switching
         guard event.isKeyDown else {
-            lastModifierFlags = event.modifiers
             return false
         }
 
-        // Check if the trigger modifier is pressed
-        guard isModifierPressed(event: event) else {
-            lastModifierFlags = event.modifiers
+        // Check if the trigger modifiers are pressed
+        guard hotkeyManager.matchesTriggerModifiers(event.modifiers) else {
             return false
         }
 
@@ -51,57 +46,6 @@ final class WindowSwitcher {
 
         // App might not be running, try to launch it
         return launchApp(bundleId: bundleId)
-    }
-
-    private func isModifierPressed(event: KeyEvent) -> Bool {
-        switch hotkeyManager.triggerModifier {
-        case .rightCommand:
-            return isRightCommandPressed(event: event)
-        case .leftCommand:
-            return isLeftCommandPressed(event: event)
-        case .rightOption:
-            return isRightOptionPressed(event: event)
-        case .leftOption:
-            return isLeftOptionPressed(event: event)
-        }
-    }
-
-    private func isRightCommandPressed(event: KeyEvent) -> Bool {
-        // Check if Command is pressed
-        guard event.modifiers.contains(.maskCommand) else { return false }
-
-        // Check for right command by looking at the raw flags
-        // The right command key sets bit 0x10 in the device-independent flags
-        let rawFlags = event.modifiers.rawValue
-
-        // Right Command key code is 54 (0x36)
-        // We can detect it by checking if the command modifier is present
-        // and the maskSecondaryFn is NOT set (which would indicate left command)
-        // Actually, we need a different approach - check for NX_DEVICERCMDKEYMASK
-
-        // NX_DEVICERCMDKEYMASK = 0x00000010
-        return (rawFlags & 0x00000010) != 0
-    }
-
-    private func isLeftCommandPressed(event: KeyEvent) -> Bool {
-        guard event.modifiers.contains(.maskCommand) else { return false }
-        // NX_DEVICELCMDKEYMASK = 0x00000008
-        let rawFlags = event.modifiers.rawValue
-        return (rawFlags & 0x00000008) != 0
-    }
-
-    private func isRightOptionPressed(event: KeyEvent) -> Bool {
-        guard event.modifiers.contains(.maskAlternate) else { return false }
-        // NX_DEVICERALTKEYMASK = 0x00000040
-        let rawFlags = event.modifiers.rawValue
-        return (rawFlags & 0x00000040) != 0
-    }
-
-    private func isLeftOptionPressed(event: KeyEvent) -> Bool {
-        guard event.modifiers.contains(.maskAlternate) else { return false }
-        // NX_DEVICELALTKEYMASK = 0x00000020
-        let rawFlags = event.modifiers.rawValue
-        return (rawFlags & 0x00000020) != 0
     }
 
     private func launchApp(bundleId: String) -> Bool {

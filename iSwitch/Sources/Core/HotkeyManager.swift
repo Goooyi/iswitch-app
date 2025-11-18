@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import KeyboardShortcuts
 
 /// Represents an app assignment for display purposes
 struct AppAssignment: Codable, Identifiable, Hashable {
@@ -50,28 +51,10 @@ struct HotkeyAssignment: Codable, Identifiable {
     }
 }
 
-/// Configuration for the hotkey trigger
-enum TriggerModifier: String, Codable, CaseIterable {
-    case rightCommand = "rightCommand"
-    case leftCommand = "leftCommand"
-    case rightOption = "rightOption"
-    case leftOption = "leftOption"
-
-    var displayName: String {
-        switch self {
-        case .rightCommand: return "Right ⌘"
-        case .leftCommand: return "Left ⌘"
-        case .rightOption: return "Right ⌥"
-        case .leftOption: return "Left ⌥"
-        }
-    }
-}
-
 /// Manages hotkey assignments with efficient storage and lookup
 /// Supports multiple apps per key for cycling
 final class HotkeyManager: ObservableObject {
     @Published var assignments: [Character: HotkeyAssignment] = [:]
-    @Published var triggerModifier: TriggerModifier = .rightCommand
     @Published var isEnabled: Bool = true
 
     // Efficient reverse lookup: bundleId -> key
@@ -82,14 +65,44 @@ final class HotkeyManager: ObservableObject {
 
     private let userDefaults = UserDefaults.standard
     private let assignmentsKey = "hotkeyAssignments_v2"
-    private let triggerModifierKey = "triggerModifier"
     private let isEnabledKey = "isEnabled"
 
     // Debounce saves to avoid excessive disk I/O
     private var saveWorkItem: DispatchWorkItem?
 
     init() {
+        // Set default shortcut if none exists
+        if KeyboardShortcuts.getShortcut(for: .triggerModifier) == nil {
+            // Default to Right Command + Space (user will only use the modifiers)
+            KeyboardShortcuts.setShortcut(.init(.space, modifiers: .command), for: .triggerModifier)
+        }
         loadAssignments()
+    }
+
+    /// Get the current trigger modifiers from KeyboardShortcuts
+    var triggerModifiers: NSEvent.ModifierFlags {
+        KeyboardShortcuts.getShortcut(for: .triggerModifier)?.modifiers ?? .command
+    }
+
+    /// Check if the given event flags match our trigger modifiers
+    func matchesTriggerModifiers(_ flags: CGEventFlags) -> Bool {
+        let modifiers = triggerModifiers
+
+        // Check each required modifier
+        if modifiers.contains(.command) {
+            guard flags.contains(.maskCommand) else { return false }
+        }
+        if modifiers.contains(.option) {
+            guard flags.contains(.maskAlternate) else { return false }
+        }
+        if modifiers.contains(.control) {
+            guard flags.contains(.maskControl) else { return false }
+        }
+        if modifiers.contains(.shift) {
+            guard flags.contains(.maskShift) else { return false }
+        }
+
+        return true
     }
 
     /// Assign a key to an application (adds to existing if key already has apps)
@@ -243,12 +256,6 @@ final class HotkeyManager: ObservableObject {
     // MARK: - Persistence
 
     func loadAssignments() {
-        // Load trigger modifier
-        if let modifierRaw = userDefaults.string(forKey: triggerModifierKey),
-           let modifier = TriggerModifier(rawValue: modifierRaw) {
-            triggerModifier = modifier
-        }
-
         // Load enabled state
         if userDefaults.object(forKey: isEnabledKey) != nil {
             isEnabled = userDefaults.bool(forKey: isEnabledKey)
@@ -279,9 +286,6 @@ final class HotkeyManager: ObservableObject {
         // Cancel any pending save
         saveWorkItem?.cancel()
         saveWorkItem = nil
-
-        // Save trigger modifier
-        userDefaults.set(triggerModifier.rawValue, forKey: triggerModifierKey)
 
         // Save enabled state
         userDefaults.set(isEnabled, forKey: isEnabledKey)

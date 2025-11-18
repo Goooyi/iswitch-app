@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import KeyboardShortcuts
 
 struct SettingsView: View {
     @EnvironmentObject var hotkeyManager: HotkeyManager
@@ -29,26 +30,26 @@ struct SettingsView: View {
                 }
                 .tag(2)
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 500, height: 450)
     }
 }
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var hotkeyManager: HotkeyManager
+    @StateObject private var launchAtLogin = LaunchAtLoginManager.shared
 
     var body: some View {
         Form {
             Section {
                 Toggle("Enable iSwitch", isOn: $hotkeyManager.isEnabled)
 
-                Picker("Trigger Modifier", selection: $hotkeyManager.triggerModifier) {
-                    ForEach(TriggerModifier.allCases, id: \.self) { modifier in
-                        Text(modifier.displayName).tag(modifier)
-                    }
+                HStack {
+                    Text("Trigger Shortcut")
+                    Spacer()
+                    KeyboardShortcuts.Recorder(for: .triggerModifier)
                 }
-                .pickerStyle(.menu)
 
-                Text("Hold the trigger modifier and press a letter key to switch to the assigned app.")
+                Text("Record your preferred modifier keys (e.g., ⌘, ⌥⇧). Then hold those keys and press a letter to switch apps.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -75,8 +76,7 @@ struct GeneralSettingsView: View {
             }
 
             Section("Startup") {
-                Toggle("Launch at Login", isOn: .constant(false))
-                    .disabled(true) // TODO: Implement launch at login
+                Toggle("Launch at Login", isOn: $launchAtLogin.isEnabled)
             }
         }
         .formStyle(.grouped)

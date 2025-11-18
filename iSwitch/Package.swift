@@ -9,9 +9,13 @@ let package = Package(
     products: [
         .executable(name: "iSwitch", targets: ["iSwitch"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.0.0")
+    ],
     targets: [
         .executableTarget(
             name: "iSwitch",
+            dependencies: ["KeyboardShortcuts"],
             path: "Sources",
             exclude: ["Resources/Info.plist"],
             swiftSettings: [
