@@ -19,6 +19,11 @@ let package = Package(
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
+        ),
+        .testTarget(
+            name: "iSwitchTests",
+            dependencies: ["iSwitch"],
+            path: "Tests/iSwitchTests"
         )
     ]
 )

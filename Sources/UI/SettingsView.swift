@@ -45,6 +45,11 @@ struct GeneralSettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Trigger Modifiers")
                     ModifierPicker(config: $hotkeyManager.modifierConfig)
+                    ModifierRecorder(config: $hotkeyManager.modifierConfig)
+                        .padding(.top, 2)
+                    Text("Click Record and hold the desired modifiers (e.g., Right Command + Option) to capture them automatically.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                     Text("Current: \(hotkeyManager.modifierConfig.displayString) + Letter")
                         .font(.caption)
                         .foregroundColor(.secondary)

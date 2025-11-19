@@ -2,15 +2,44 @@ import Foundation
 import AppKit
 import Carbon.HIToolbox
 
+protocol ApplicationLaunching {
+    func launchApp(bundleId: String) -> Bool
+}
+
+struct WorkspaceApplicationLauncher: ApplicationLaunching {
+    func launchApp(bundleId: String) -> Bool {
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else {
+            return false
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+
+        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, error in
+            if let error {
+                print("Failed to launch app \(bundleId): \(error)")
+            }
+        }
+
+        return true
+    }
+}
+
 /// Coordinates keyboard events with app switching
 /// This is the main logic component that ties everything together
 final class WindowSwitcher {
-    private let appManager: AppManager
-    private let hotkeyManager: HotkeyManager
+    private let appManager: AppActivating
+    private let hotkeyManager: HotkeyManaging
+    private let launcher: ApplicationLaunching
 
-    init(appManager: AppManager, hotkeyManager: HotkeyManager) {
+    init(
+        appManager: AppActivating,
+        hotkeyManager: HotkeyManaging,
+        launcher: ApplicationLaunching = WorkspaceApplicationLauncher()
+    ) {
         self.appManager = appManager
         self.hotkeyManager = hotkeyManager
+        self.launcher = launcher
     }
 
     /// Handle a keyboard event
@@ -49,22 +78,7 @@ final class WindowSwitcher {
     }
 
     private func launchApp(bundleId: String) -> Bool {
-        // Try to find the app in the file system and launch it
-        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else {
-            return false
-        }
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-
-        // Launch asynchronously
-        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { app, error in
-            if let error = error {
-                print("Failed to launch app \(bundleId): \(error)")
-            }
-        }
-
-        return true
+        launcher.launchApp(bundleId: bundleId)
     }
 }
 

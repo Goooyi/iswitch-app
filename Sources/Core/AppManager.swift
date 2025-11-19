@@ -2,6 +2,11 @@ import Foundation
 import AppKit
 import Combine
 
+protocol AppActivating {
+    @discardableResult
+    func activateApp(bundleId: String) -> Bool
+}
+
 /// Represents a running application with cached properties
 struct RunningApp: Identifiable, Hashable {
     let id: pid_t
@@ -174,3 +179,5 @@ final class AppManager: ObservableObject {
         // For now, we don't need to do anything special
     }
 }
+
+extension AppManager: AppActivating {}

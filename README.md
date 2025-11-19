@@ -18,39 +18,103 @@ A high-performance macOS window switcher inspired by rcmd, but optimized to avoi
 - Xcode 15.0 or later (for building)
 - Accessibility permissions
 
-## Building
+## Building & Running Locally
 
-### Using Xcode
-
-1. Open `Package.swift` in Xcode
-2. Select the "iSwitch" scheme
-3. Build (Cmd+B) and Run (Cmd+R)
-
-### Using Command Line
+### 1. Clone and enter the project
 
 ```bash
-cd iSwitch
+git clone https://github.com/goooyi/iswitch-app.git
+cd iswitch-app
+```
+
+### 2. Install Xcode command-line tools (one-time)
+
+```bash
+xcode-select --install   # skip if already installed
+```
+
+### 3. Build & test from the command line
+
+```bash
+swift test         # runs the unit tests
 swift build -c release
 ```
 
-The built executable will be in `.build/release/iSwitch`
+The optimized binary lives at `.build/release/iSwitch`.
 
-### Creating an App Bundle
-
-To create a proper .app bundle:
+### 4. Use the helper script to rebuild + bundle
 
 ```bash
-# Build release
+# Make sure the script is executable
+chmod +x scripts/build_app.sh
+
+# Run the script from anywhere
+./scripts/build_app.sh
+```
+
+The script runs `swift build -c release`, recreates `iSwitch.app` at the repo root, and reminds you how to launch it.
+
+### 5. Create and launch manually (if you prefer)
+
+```bash
+# Build (if not already built)
 swift build -c release
 
-# Create app structure
+# Create bundle structure
+rm -rf iSwitch.app
 mkdir -p iSwitch.app/Contents/MacOS
 mkdir -p iSwitch.app/Contents/Resources
 
-# Copy binary and Info.plist
+# Copy binary + Info.plist
 cp .build/release/iSwitch iSwitch.app/Contents/MacOS/
 cp Sources/Resources/Info.plist iSwitch.app/Contents/
+
+# Launch the app
+open iSwitch.app
 ```
+
+macOS may warn that the app is from an unidentified developer the first time you open it (unless you sign/notarize it). Approve it via System Settings → Privacy & Security if prompted.
+
+### 6. Open the project in Xcode (optional)
+
+1. Open `Package.swift` in Xcode.
+2. Select the “iSwitch” scheme.
+3. Build & Run (`⌘B` / `⌘R`) to debug inside Xcode.
+
+### 7. (Optional) Codesign & notarize for distribution
+
+For sharing with others, sign the bundle with your Developer ID certificate and notarize it:
+
+```bash
+# Replace TEAM_ID and APPLE_ID details with your own
+codesign -s "Developer ID Application: Your Name (TEAM_ID)" --options runtime --deep iSwitch.app
+xcrun notarytool submit iSwitch.zip --apple-id "you@example.com" --team-id TEAM_ID --keychain-profile "AC_PASSWORD" --wait
+xcrun stapler staple iSwitch.app
+```
+
+Upload the resulting `.zip`/`.dmg` to a GitHub Release so users can download a trusted, notarized copy.
+
+### 8. Create a distributable DMG
+
+After running `./scripts/build_app.sh`, package the app into a compressed DMG:
+
+```bash
+chmod +x scripts/package_dmg.sh
+./scripts/package_dmg.sh
+```
+
+The DMG is emitted to `dist/iSwitch.dmg`.
+
+### 9. Automate releases with GitHub Actions
+
+This repo ships with `.github/workflows/release.yml`. Pushing a tag like `v0.0.1` (or running the workflow manually) triggers it to:
+
+1. Build the release binary
+2. Create `iSwitch.app`
+3. Package `dist/iSwitch.dmg`
+4. Attach the DMG to the GitHub Release associated with the tag
+
+Edit the workflow as needed to insert codesigning/notarization steps before packaging.
 
 ## Usage
 

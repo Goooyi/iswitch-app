@@ -2,6 +2,12 @@ import Foundation
 import AppKit
 import Combine
 
+protocol HotkeyManaging: AnyObject {
+    var isEnabled: Bool { get }
+    func matchesTriggerModifiers(_ flags: CGEventFlags) -> Bool
+    func nextBundleId(for key: Character) -> String?
+}
+
 /// Represents an app assignment for display purposes
 struct AppAssignment: Codable, Identifiable, Hashable {
     var id: String { bundleIdentifier }
@@ -63,7 +69,7 @@ final class HotkeyManager: ObservableObject {
     // Track cycling state: key -> last activated index
     private var cycleIndex: [Character: Int] = [:]
 
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults: UserDefaults
     private let assignmentsKey = "hotkeyAssignments_v2"
     private let isEnabledKey = "isEnabled"
     private let modifierConfigKey = "modifierConfig"
@@ -71,7 +77,8 @@ final class HotkeyManager: ObservableObject {
     // Debounce saves to avoid excessive disk I/O
     private var saveWorkItem: DispatchWorkItem?
 
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         loadAssignments()
     }
 
@@ -82,7 +89,7 @@ final class HotkeyManager: ObservableObject {
 
     /// Assign a key to an application (adds to existing if key already has apps)
     func assign(key: Character, to bundleId: String, appName: String) {
-        let lowercaseKey = Character(key.lowercased())
+        let lowercaseKey = normalizedKey(key)
 
         // Remove old assignment for this bundle ID from any key
         if let oldKey = bundleIdToKey[bundleId] {
@@ -109,12 +116,13 @@ final class HotkeyManager: ObservableObject {
         }
 
         bundleIdToKey[bundleId] = lowercaseKey
+        clampCycleIndex(for: lowercaseKey)
         scheduleSave()
     }
 
     /// Remove assignment for a key (removes all apps)
     func removeAssignment(for key: Character) {
-        let lowercaseKey = Character(key.lowercased())
+        let lowercaseKey = normalizedKey(key)
         if let assignment = assignments.removeValue(forKey: lowercaseKey) {
             for app in assignment.apps {
                 bundleIdToKey.removeValue(forKey: app.bundleIdentifier)
@@ -126,7 +134,7 @@ final class HotkeyManager: ObservableObject {
 
     /// Remove a specific app from a key's assignment
     func removeApp(_ bundleId: String, from key: Character) {
-        let lowercaseKey = Character(key.lowercased())
+        let lowercaseKey = normalizedKey(key)
         guard var assignment = assignments[lowercaseKey] else { return }
 
         assignment.apps.removeAll { $0.bundleIdentifier == bundleId }
@@ -137,6 +145,7 @@ final class HotkeyManager: ObservableObject {
             cycleIndex.removeValue(forKey: lowercaseKey)
         } else {
             assignments[lowercaseKey] = assignment
+            clampCycleIndex(for: lowercaseKey)
         }
 
         scheduleSave()
@@ -151,24 +160,27 @@ final class HotkeyManager: ObservableObject {
 
     /// Get all bundle IDs assigned to a key - for cycling
     func bundleIds(for key: Character) -> [String] {
-        assignments[Character(key.lowercased())]?.apps.map { $0.bundleIdentifier } ?? []
+        assignments[normalizedKey(key)]?.apps.map { $0.bundleIdentifier } ?? []
     }
 
     /// Get the next bundle ID to activate (for cycling)
     func nextBundleId(for key: Character) -> String? {
-        let lowercaseKey = Character(key.lowercased())
+        let lowercaseKey = normalizedKey(key)
         guard let assignment = assignments[lowercaseKey], !assignment.apps.isEmpty else {
+            cycleIndex.removeValue(forKey: lowercaseKey)
             return nil
         }
 
-        let currentIndex = cycleIndex[lowercaseKey] ?? 0
+        let currentIndex = normalizedCycleIndex(for: lowercaseKey, appCount: assignment.apps.count)
+        let bundleId = assignment.apps[currentIndex].bundleIdentifier
 
-        // Only update cycle index if there are multiple apps
         if assignment.apps.count > 1 {
             cycleIndex[lowercaseKey] = (currentIndex + 1) % assignment.apps.count
+        } else {
+            cycleIndex[lowercaseKey] = 0
         }
 
-        return assignment.apps[currentIndex].bundleIdentifier
+        return bundleId
     }
 
     /// Get the key assigned to a bundle ID - O(1) lookup
@@ -253,12 +265,14 @@ final class HotkeyManager: ObservableObject {
 
             assignments.removeAll(keepingCapacity: true)
             bundleIdToKey.removeAll(keepingCapacity: true)
+            cycleIndex.removeAll(keepingCapacity: true)
 
             for assignment in assignmentArray {
                 assignments[assignment.key] = assignment
                 for app in assignment.apps {
                     bundleIdToKey[app.bundleIdentifier] = assignment.key
                 }
+                clampCycleIndex(for: assignment.key)
             }
         } catch {
             print("Failed to load hotkey assignments: \(error)")
@@ -292,6 +306,35 @@ final class HotkeyManager: ObservableObject {
         }
     }
 
+    private func normalizedKey(_ key: Character) -> Character {
+        Character(String(key).lowercased())
+    }
+
+    private func normalizedCycleIndex(for key: Character, appCount: Int) -> Int {
+        guard appCount > 0 else {
+            cycleIndex.removeValue(forKey: key)
+            return 0
+        }
+
+        let current = cycleIndex[key] ?? 0
+        let clamped = min(current, appCount - 1)
+
+        if clamped != current {
+            cycleIndex[key] = clamped
+        }
+
+        return clamped
+    }
+
+    private func clampCycleIndex(for key: Character) {
+        guard let count = assignments[key]?.apps.count else {
+            cycleIndex.removeValue(forKey: key)
+            return
+        }
+
+        _ = normalizedCycleIndex(for: key, appCount: count)
+    }
+
     private func scheduleSave() {
         // Debounce saves to avoid excessive disk I/O
         saveWorkItem?.cancel()
@@ -301,3 +344,5 @@ final class HotkeyManager: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: saveWorkItem!)
     }
 }
+
+extension HotkeyManager: HotkeyManaging {}

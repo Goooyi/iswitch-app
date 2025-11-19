@@ -10,9 +10,8 @@ xcuserdata/
 
 # Swift Package Manager
 .build/
+.swiftpm/
 Packages/
-Package.resolved
-*.xcodeproj
 
 # macOS
 .DS_Store
@@ -22,7 +21,14 @@ Package.resolved
 # Build products
 build/
 DerivedData/
+iSwitch.app/
 *.app
+dist/
 
 # User settings
 *.moved-aside
+
+# Artifacts
+*.dSYM
+*.xcresult
+*.log
