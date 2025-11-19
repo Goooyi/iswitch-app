@@ -14,13 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Swift 6
-        uses: swift-actions/setup-swift@v2.4.0
+      - name: Run tests (Swift 6 via xcodebuild)
+        uses: mxcl/xcodebuild@v3
         with:
-          swift-version: "5.10"
-
-      - name: Run tests
-        run: swift test
+          platform: macOS
+          swift: "^6"
 
       - name: Build app bundle
         run: |
