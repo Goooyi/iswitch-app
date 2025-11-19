@@ -17,7 +17,11 @@ let package = Package(
             path: "Sources",
             exclude: ["Resources/Info.plist"],
             swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
+                .enableUpcomingFeature("StrictConcurrency"),
+                .unsafeFlags([
+                    "-Xfrontend",
+                    "-disable-round-trip-debug-types"
+                ], .when(configuration: .debug))
             ]
         ),
         .testTarget(
