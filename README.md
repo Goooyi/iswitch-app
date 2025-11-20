@@ -36,29 +36,32 @@ xcode-select --install   # skip if already installed
 ### 3. Build & test from the command line
 
 ```bash
-swift test         # runs the unit tests
+# Default (debug) build with local caches for sandboxed environments
+./scripts/build.sh
+
+# Release build
+./scripts/build.sh --release
+
+# Standard SwiftPM (if your environment isn't sandboxed)
+swift test
 swift build -c release
 ```
 
-The optimized binary lives at `.build/release/iSwitch`.
+The optimized binary lives at `.build/release/iSwitch` after a release build.
 
-### 4. Use the helper script to rebuild + bundle
+### 4. Build + bundle into a .app
 
 ```bash
-# Make sure the script is executable
-chmod +x scripts/build_app.sh
-
-# Run the script from anywhere
 ./scripts/build_app.sh
 ```
 
-The script runs `swift build -c release`, recreates `iSwitch.app` at the repo root, and reminds you how to launch it.
+The script runs a release build via `./scripts/build.sh --release`, recreates `iSwitch.app` at the repo root, and reminds you how to launch it.
 
 ### 5. Create and launch manually (if you prefer)
 
 ```bash
 # Build (if not already built)
-swift build -c release
+./scripts/build.sh --release
 
 # Create bundle structure
 rm -rf iSwitch.app
@@ -99,7 +102,6 @@ Upload the resulting `.zip`/`.dmg` to a GitHub Release so users can download a t
 After running `./scripts/build_app.sh`, package the app into a compressed DMG:
 
 ```bash
-chmod +x scripts/package_dmg.sh
 ./scripts/package_dmg.sh
 ```
 

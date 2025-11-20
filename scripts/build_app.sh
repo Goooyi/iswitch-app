@@ -7,7 +7,7 @@ BUILD_DIR="$PROJECT_ROOT/.build/release"
 APP_BUNDLE="$PROJECT_ROOT/${APP_NAME}.app"
 
 echo "==> Building $APP_NAME (release)…"
-swift build -c release --package-path "$PROJECT_ROOT"
+"$PROJECT_ROOT/scripts/build.sh" --release
 
 echo "==> Recreating bundle structure…"
 rm -rf "$APP_BUNDLE"

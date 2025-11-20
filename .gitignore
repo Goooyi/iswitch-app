@@ -12,6 +12,7 @@ xcuserdata/
 .build/
 .swiftpm/
 Packages/
+.home/
 
 # macOS
 .DS_Store
