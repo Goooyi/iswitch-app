@@ -65,10 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showSettingsWindow() {
-        if #available(macOS 14.0, *) {
-            NSApp.sendAction(#selector(NSApplication.showSettingsWindow(_:)), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(#selector(NSApplication.showPreferencesWindow(_:)), to: nil, from: nil)
+        let selectors: [Selector] = ["showSettingsWindow:", "showPreferencesWindow:"].map(NSSelectorFromString)
+
+        for selector in selectors {
+            guard NSApp.responds(to: selector) else { continue }
+            if NSApp.sendAction(selector, to: nil, from: nil) { break }
         }
 
         DispatchQueue.main.async {
