@@ -45,7 +45,11 @@ final class WindowSwitcher {
     /// Handle a keyboard event
     /// Returns true if the event was handled and should be suppressed
     func handleKeyEvent(_ event: KeyEvent) -> Bool {
-        if event.character == "," && event.modifiers.contains(.maskCommand) {
+        i
+      
+      
+      
+      t.modifiers.contains(.maskCommand) {
             // Preserve the standard macOS shortcut for opening settings even when
             // our hotkey modifiers match. Limit to pure Command presses so it
             // doesn't interfere with other custom shortcuts.
