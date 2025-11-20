@@ -83,6 +83,8 @@ final class HotkeyManager: ObservableObject {
     // Debounce saves to avoid excessive disk I/O
     private var saveWorkItem: DispatchWorkItem?
 
+    private let selfBundleId: String = Bundle.main.bundleIdentifier ?? ""
+
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         loadAssignments()
@@ -95,6 +97,7 @@ final class HotkeyManager: ObservableObject {
 
     /// Assign a key to an application (adds to existing if key already has apps)
     func assign(key: Character, to bundleId: String, appName: String) {
+        guard !bundleId.isEmpty else { return }
         let lowercaseKey = normalizedKey(key)
 
         // Remove old assignment for this bundle ID from any key
@@ -219,6 +222,10 @@ final class HotkeyManager: ObservableObject {
         var appsByLetter: [Character: [RunningApp]] = [:]
 
         for app in apps {
+            if app.bundleIdentifier == selfBundleId || app.bundleIdentifier.isEmpty {
+                continue
+            }
+
             if ignoredBundleIds.contains(app.bundleIdentifier) {
                 continue
             }
