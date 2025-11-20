@@ -17,6 +17,15 @@ struct iSwitchApp: App {
                 .environmentObject(appDelegate.hotkeyManager)
                 .environmentObject(appDelegate.appManager)
         }
+
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    appDelegate.showSettingsWindow()
+                }
+                .keyboardShortcut(",")
+            }
+        }
     }
 }
 
@@ -53,6 +62,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyboardMonitor?.stop()
         appManager.stopMonitoring()
         hotkeyManager.saveAssignments()
+    }
+
+    func showSettingsWindow() {
+        let selectorName: String
+        if #available(macOS 14.0, *) {
+            selectorName = "showSettingsWindow:"
+        } else {
+            selectorName = "showPreferencesWindow:"
+        }
+
+        let selector = NSSelectorFromString(selectorName)
+        if NSApp.responds(to: selector) {
+            NSApp.sendAction(selector, to: nil, from: nil)
+        }
+
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+
+            if let window = NSApp.windows.first(where: { window in
+                guard let identifier = window.identifier?.rawValue else {
+                    return window.title.contains("Settings") || window.title.contains("Preferences")
+                }
+                return identifier.contains("settings") || identifier.contains("preferences")
+            }) {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
     }
 
     private func checkAccessibilityPermissions() {
