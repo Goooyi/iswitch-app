@@ -66,24 +66,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     func showSettingsWindow() {
-        let selectors: [Selector] = ["showSettingsWindow:", "showPreferencesWindow:"].map(NSSelectorFromString)
+        NSApp.activate(ignoringOtherApps: true)
 
+        let selectors: [Selector] = ["showSettingsWindow:", "showPreferencesWindow:"].map(NSSelectorFromString)
         for selector in selectors {
             guard NSApp.responds(to: selector) else { continue }
             if NSApp.sendAction(selector, to: nil, from: nil) { break }
         }
 
-        DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
+        bringSettingsToFrontWithRetry()
+    }
 
-            if let window = NSApp.windows.first(where: { window in
-                guard let identifier = window.identifier?.rawValue else {
-                    return window.title.contains("Settings") || window.title.contains("Preferences")
-                }
-                return identifier.contains("settings") || identifier.contains("preferences")
-            }) {
-                window.makeKeyAndOrderFront(nil)
+    @MainActor
+    private func bringSettingsToFrontWithRetry(attempts: Int = 3) {
+        guard attempts > 0 else { return }
+
+        if let window = NSApp.windows.first(where: { window in
+            guard let identifier = window.identifier?.rawValue else {
+                return window.title.contains("Settings") || window.title.contains("Preferences")
             }
+            return identifier.localizedCaseInsensitiveContains("settings")
+                || identifier.localizedCaseInsensitiveContains("preferences")
+        }) {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // Settings window creation can be async; retry shortly.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            self.bringSettingsToFrontWithRetry(attempts: attempts - 1)
         }
     }
 

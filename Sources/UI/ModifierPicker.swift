@@ -49,32 +49,47 @@ struct ModifierConfig: Codable, Equatable {
         command || option || control || shift
     }
 
+    private static let relevantFlags: CGEventFlags = [
+        .maskCommand,
+        .maskAlternate,
+        .maskControl,
+        .maskShift,
+        .maskSecondaryFn
+    ]
+
+    /// Normalizes incoming flags to the bits we care about and strips right-command side
+    /// markers when the side is not enforced (any/left).
+    private func normalized(flags: CGEventFlags) -> CGEventFlags {
+        var normalized = flags.intersection(Self.relevantFlags)
+        if !command || commandSide == .any || commandSide == .left {
+            normalized.remove(.maskSecondaryFn)
+        }
+        return normalized
+    }
+
+    /// Build the exact set of flags required for a match.
+    private func requiredFlags() -> CGEventFlags {
+        var required: CGEventFlags = []
+        if command {
+            required.insert(.maskCommand)
+            if commandSide == .right {
+                required.insert(.maskSecondaryFn)
+            }
+        }
+        if option { required.insert(.maskAlternate) }
+        if control { required.insert(.maskControl) }
+        if shift { required.insert(.maskShift) }
+        return required
+    }
+
     /// Check if CGEventFlags contain our required modifiers
     func matches(_ flags: CGEventFlags) -> Bool {
         // Must have at least one modifier configured
         guard hasModifiers else { return false }
 
-        // Check required modifiers are present
-        if command {
-            guard flags.contains(.maskCommand) else { return false }
-
-            let hasRight = flags.contains(.maskSecondaryFn)
-            switch commandSide {
-            case .any:
-                break
-            case .left:
-                if hasRight { return false }
-            case .right:
-                // Some remapping tools (e.g., Hyperkey) synthesize Command without side information.
-                // Prefer the right-side signal when present, but allow ambiguous Command flags so the
-                // shortcut still works even if the side isn't encoded.
-                break
-            }
-        }
-        if option && !flags.contains(.maskAlternate) { return false }
-        if control && !flags.contains(.maskControl) { return false }
-        if shift && !flags.contains(.maskShift) { return false }
-        return true
+        let observed = normalized(flags: flags)
+        let required = requiredFlags()
+        return observed == required
     }
 
     /// Display string for the modifier combination
