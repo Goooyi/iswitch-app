@@ -65,7 +65,10 @@ struct ModifierConfig: Codable, Equatable {
             case .left:
                 if hasRight { return false }
             case .right:
-                if !hasRight { return false }
+                // Some remapping tools (e.g., Hyperkey) synthesize Command without side information.
+                // Prefer the right-side signal when present, but allow ambiguous Command flags so the
+                // shortcut still works even if the side isn't encoded.
+                break
             }
         }
         if option && !flags.contains(.maskAlternate) { return false }
