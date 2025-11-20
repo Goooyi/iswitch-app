@@ -95,23 +95,12 @@ struct MenuBarView: View {
     }
 
     private func openSettings() {
-        // Try multiple methods to open settings
-        if #available(macOS 14.0, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.showSettingsWindow()
+            return
         }
 
-        // Ensure app comes to front
-        DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
-            // Also try to bring windows to front
-            for window in NSApp.windows {
-                if window.title.contains("Settings") || window.title.contains("iSwitch") {
-                    window.makeKeyAndOrderFront(nil)
-                }
-            }
-        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
