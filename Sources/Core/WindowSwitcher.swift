@@ -73,7 +73,11 @@ final class WindowSwitcher {
             return true // Event handled, suppress it
         }
 
-        // App might not be running, try to launch it
+        // App might not be running, launch if allowed
+        guard hotkeyManager.relaunchInactiveApps else {
+            return false
+        }
+
         return launchApp(bundleId: bundleId)
     }
 

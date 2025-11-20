@@ -29,6 +29,14 @@ struct RunningApp: Identifiable, Hashable {
         }
     }
 
+    init(id: pid_t = 0, bundleIdentifier: String, name: String, icon: NSImage = NSWorkspace.shared.icon(for: .applicationBundle), bundleURL: URL? = nil) {
+        self.id = id
+        self.bundleIdentifier = bundleIdentifier
+        self.name = name
+        self.icon = icon
+        self.bundleURL = bundleURL
+    }
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }

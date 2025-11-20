@@ -58,6 +58,11 @@ struct GeneralSettingsView: View {
                 Text("Hold the selected modifiers and press a letter key to switch to the assigned app.")
                     .font(.caption)
                     .foregroundColor(.secondary)
+
+                Toggle("Launch app if not running", isOn: $hotkeyManager.relaunchInactiveApps)
+                Text("When off, iSwitch will only cycle through currently running apps and won't reopen closed ones.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
 
             Section("Permissions") {
@@ -90,6 +95,12 @@ struct GeneralSettingsView: View {
         .onChange(of: hotkeyManager.modifierConfig) { _, _ in
             hotkeyManager.saveAssignments()
         }
+        .onChange(of: hotkeyManager.isEnabled) { _, _ in
+            hotkeyManager.saveAssignments()
+        }
+        .onChange(of: hotkeyManager.relaunchInactiveApps) { _, _ in
+            hotkeyManager.saveAssignments()
+        }
     }
 
     private func openAccessibilitySettings() {
@@ -101,8 +112,7 @@ struct GeneralSettingsView: View {
 struct HotkeysSettingsView: View {
     @EnvironmentObject var hotkeyManager: HotkeyManager
     @EnvironmentObject var appManager: AppManager
-    @State private var showingAppPicker = false
-    @State private var selectedKey: Character?
+    @State private var pickerContext: AppPickerContext?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -130,38 +140,90 @@ struct HotkeysSettingsView: View {
 
             // Assignments list
             List {
-                ForEach(KeyCodeMap.allLetters, id: \.self) { letter in
-                    HotkeyRow(
-                        key: letter,
-                        assignment: hotkeyManager.assignments[letter],
-                        appManager: appManager,
-                        onAssign: {
-                            selectedKey = letter
-                            showingAppPicker = true
-                        },
-                        onRemove: {
-                            hotkeyManager.removeAssignment(for: letter)
+                Section("Key Assignments") {
+                    ForEach(KeyCodeMap.allLetters, id: \.self) { letter in
+                        HotkeyRow(
+                            key: letter,
+                            assignment: hotkeyManager.assignments[letter],
+                            appManager: appManager,
+                            onAssign: {
+                                pickerContext = .assign(letter)
+                            },
+                            onRemove: {
+                                hotkeyManager.removeAssignment(for: letter)
+                            }
+                        )
+                        .environmentObject(hotkeyManager)
+                    }
+                }
+
+                Section {
+                    if hotkeyManager.sortedIgnoredApps.isEmpty {
+                        Text("Ignored apps won't be auto-assigned. Add apps here to keep them out of suggestions.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ForEach(hotkeyManager.sortedIgnoredApps) { app in
+                            IgnoredAppRow(app: app, appManager: appManager) {
+                                hotkeyManager.removeIgnoredApp(bundleId: app.bundleIdentifier)
+                            }
                         }
-                    )
-                    .environmentObject(hotkeyManager)
+                    }
+
+                    Button {
+                        pickerContext = .ignore
+                    } label: {
+                        Label("Add App to Ignore List", systemImage: "plus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .padding(.top, 4)
+                } header: {
+                    Text("Ignored Apps")
                 }
             }
             .listStyle(.inset)
         }
-        .sheet(isPresented: $showingAppPicker) {
+        .sheet(item: $pickerContext) { context in
             AppPickerView(
-                selectedKey: selectedKey,
+                title: context.title,
                 onSelect: { app in
-                    if let key = selectedKey {
+                    switch context {
+                    case .assign(let key):
                         hotkeyManager.assign(key: key, to: app.bundleIdentifier, appName: app.name)
+                    case .ignore:
+                        hotkeyManager.addIgnoredApp(bundleId: app.bundleIdentifier, appName: app.name)
                     }
-                    showingAppPicker = false
+                    pickerContext = nil
                 },
                 onCancel: {
-                    showingAppPicker = false
+                    pickerContext = nil
                 }
             )
             .environmentObject(appManager)
+        }
+    }
+}
+
+private enum AppPickerContext: Identifiable {
+    case assign(Character)
+    case ignore
+
+    var id: String {
+        switch self {
+        case .assign(let key):
+            return "assign-\(key)"
+        case .ignore:
+            return "ignore"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .assign(let key):
+            return "Select App for Key '\(String(key).uppercased())'"
+        case .ignore:
+            return "Choose App to Ignore"
         }
     }
 }
@@ -186,12 +248,17 @@ struct HotkeyRow: View {
                 // Show all assigned apps with icons
                 HStack(spacing: 4) {
                     ForEach(assignment.apps) { appAssignment in
-                        if let app = appManager.app(forBundleId: appAssignment.bundleIdentifier) {
-                            Image(nsImage: app.icon)
-                                .resizable()
-                                .frame(width: 20, height: 20)
-                                .help(appAssignment.appName)
-                        }
+                        let icon = appManager.app(forBundleId: appAssignment.bundleIdentifier)?.icon ?? NSWorkspace.shared.icon(for: .applicationBundle)
+                        RemovableAppIcon(
+                            icon: icon,
+                            appName: appAssignment.appName,
+                            onRemove: {
+                                hotkeyManager.removeApp(appAssignment.bundleIdentifier, from: assignment.key)
+                            },
+                            onIgnore: {
+                                hotkeyManager.addIgnoredApp(bundleId: appAssignment.bundleIdentifier, appName: appAssignment.appName)
+                            }
+                        )
                     }
                 }
 
@@ -237,8 +304,78 @@ struct HotkeyRow: View {
     }
 }
 
+struct IgnoredAppRow: View {
+    let app: AppAssignment
+    let appManager: AppManager
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack {
+            let icon = appManager.app(forBundleId: app.bundleIdentifier)?.icon ?? NSWorkspace.shared.icon(for: .applicationBundle)
+            Image(nsImage: icon)
+                .resizable()
+                .frame(width: 24, height: 24)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            VStack(alignment: .leading) {
+                Text(app.appName)
+                Text(app.bundleIdentifier)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(app.appName) from ignore list")
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+struct RemovableAppIcon: View {
+    let icon: NSImage
+    let appName: String
+    let onRemove: () -> Void
+    let onIgnore: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onRemove) {
+            ZStack(alignment: .topTrailing) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 22, height: 22)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white)
+                    .padding(2)
+                    .background(Color.black.opacity(0.6))
+                    .clipShape(Circle())
+                    .offset(x: 4, y: -4)
+                    .opacity(isHovering ? 1 : 0)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .help("Remove \(appName) from this key")
+        .contextMenu {
+            Button("Remove from key", action: onRemove)
+            Button("Add to ignore list", action: onIgnore)
+        }
+    }
+}
+
 struct AppPickerView: View {
-    let selectedKey: Character?
+    let title: String
     let onSelect: (RunningApp) -> Void
     let onCancel: () -> Void
 
@@ -260,7 +397,7 @@ struct AppPickerView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Select App for Key '\(String(selectedKey ?? Character(" ")).uppercased())'")
+                Text(title)
                     .font(.headline)
                 Spacer()
                 Button("Cancel", action: onCancel)

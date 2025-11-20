@@ -24,6 +24,28 @@ final class HotkeyManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.nextBundleId(for: key), "app.one")
     }
+
+    func testIgnoredAppsAreSkippedByAutoAssign() {
+        let suiteName = "HotkeyManagerTests-\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create user defaults suite")
+            return
+        }
+        userDefaults.removePersistentDomain(forName: suiteName)
+
+        let manager = HotkeyManager(userDefaults: userDefaults)
+        manager.addIgnoredApp(bundleId: "com.browser", appName: "Browser")
+
+        let apps = [
+            RunningApp(bundleIdentifier: "com.browser", name: "Browser"),
+            RunningApp(bundleIdentifier: "com.mail", name: "Mail")
+        ]
+
+        manager.autoAssign(apps: apps)
+
+        XCTAssertNil(manager.key(for: "com.browser"))
+        XCTAssertEqual(manager.key(for: "com.mail"), "m")
+    }
 }
 
 @MainActor
@@ -117,6 +139,16 @@ final class WindowSwitcherTests: XCTestCase {
         XCTAssertEqual(launcher.launchCallCount, 1)
     }
 
+    func testHandleEventRespectsRelaunchPreference() {
+        let (windowSwitcher, appManager, hotkeys, launcher) = makeSwitcher()
+        hotkeys.nextBundleIdResult = "com.test.app"
+        appManager.activateResult = false
+        hotkeys.relaunchInactiveApps = false
+
+        XCTAssertFalse(windowSwitcher.handleKeyEvent(makeEvent()))
+        XCTAssertEqual(launcher.launchCallCount, 0)
+    }
+
     func testHandleEventRejectsInvalidStates() {
         let (windowSwitcher, appManager, hotkeys, _) = makeSwitcher()
         hotkeys.matchesResult = false
@@ -156,6 +188,7 @@ private final class MockAppManager: AppActivating {
 
 private final class MockHotkeyManager: HotkeyManaging {
     var isEnabled: Bool = true
+    var relaunchInactiveApps: Bool = true
     var matchesResult: Bool = true
     var nextBundleIdResult: String? = "com.test.app"
 
