@@ -4,6 +4,7 @@ import Combine
 
 protocol HotkeyManaging: AnyObject {
     var isEnabled: Bool { get }
+    var relaunchInactiveApps: Bool { get }
     func matchesTriggerModifiers(_ flags: CGEventFlags) -> Bool
     func nextBundleId(for key: Character) -> String?
 }
@@ -61,10 +62,13 @@ struct HotkeyAssignment: Codable, Identifiable {
 final class HotkeyManager: ObservableObject {
     @Published var assignments: [Character: HotkeyAssignment] = [:]
     @Published var isEnabled: Bool = true
+    @Published var relaunchInactiveApps: Bool = true
     @Published var modifierConfig: ModifierConfig = .default
+    @Published var ignoredApps: [AppAssignment] = []
 
     // Efficient reverse lookup: bundleId -> key
     private var bundleIdToKey: [String: Character] = [:]
+    private var ignoredBundleIds: Set<String> = []
 
     // Track cycling state: key -> last activated index
     private var cycleIndex: [Character: Int] = [:]
@@ -72,7 +76,9 @@ final class HotkeyManager: ObservableObject {
     private let userDefaults: UserDefaults
     private let assignmentsKey = "hotkeyAssignments_v2"
     private let isEnabledKey = "isEnabled"
+    private let relaunchInactiveAppsKey = "relaunchInactiveApps"
     private let modifierConfigKey = "modifierConfig"
+    private let ignoredAppsKey = "ignoredApps"
 
     // Debounce saves to avoid excessive disk I/O
     private var saveWorkItem: DispatchWorkItem?
@@ -199,6 +205,13 @@ final class HotkeyManager: ObservableObject {
         return KeyCodeMap.allLetters.filter { !assigned.contains($0) }
     }
 
+    /// Get ignored apps sorted alphabetically
+    var sortedIgnoredApps: [AppAssignment] {
+        ignoredApps.sorted { lhs, rhs in
+            lhs.appName.localizedCaseInsensitiveCompare(rhs.appName) == .orderedAscending
+        }
+    }
+
     /// Auto-assign keys based on app name first letter
     /// Apps with same first letter will be grouped together for cycling
     func autoAssign(apps: [RunningApp]) {
@@ -206,6 +219,10 @@ final class HotkeyManager: ObservableObject {
         var appsByLetter: [Character: [RunningApp]] = [:]
 
         for app in apps {
+            if ignoredBundleIds.contains(app.bundleIdentifier) {
+                continue
+            }
+
             // Skip if already assigned
             if bundleIdToKey[app.bundleIdentifier] != nil {
                 continue
@@ -247,6 +264,10 @@ final class HotkeyManager: ObservableObject {
             isEnabled = userDefaults.bool(forKey: isEnabledKey)
         }
 
+        if userDefaults.object(forKey: relaunchInactiveAppsKey) != nil {
+            relaunchInactiveApps = userDefaults.bool(forKey: relaunchInactiveAppsKey)
+        }
+
         // Load modifier config
         if let data = userDefaults.data(forKey: modifierConfigKey) {
             do {
@@ -257,25 +278,36 @@ final class HotkeyManager: ObservableObject {
         }
 
         // Load assignments using PropertyListDecoder (more efficient than JSON)
-        guard let data = userDefaults.data(forKey: assignmentsKey) else { return }
+        if let data = userDefaults.data(forKey: assignmentsKey) {
+            do {
+                let decoder = PropertyListDecoder()
+                let assignmentArray = try decoder.decode([HotkeyAssignment].self, from: data)
 
-        do {
-            let decoder = PropertyListDecoder()
-            let assignmentArray = try decoder.decode([HotkeyAssignment].self, from: data)
+                assignments.removeAll(keepingCapacity: true)
+                bundleIdToKey.removeAll(keepingCapacity: true)
+                cycleIndex.removeAll(keepingCapacity: true)
 
-            assignments.removeAll(keepingCapacity: true)
-            bundleIdToKey.removeAll(keepingCapacity: true)
-            cycleIndex.removeAll(keepingCapacity: true)
-
-            for assignment in assignmentArray {
-                assignments[assignment.key] = assignment
-                for app in assignment.apps {
-                    bundleIdToKey[app.bundleIdentifier] = assignment.key
+                for assignment in assignmentArray {
+                    assignments[assignment.key] = assignment
+                    for app in assignment.apps {
+                        bundleIdToKey[app.bundleIdentifier] = assignment.key
+                    }
+                    clampCycleIndex(for: assignment.key)
                 }
-                clampCycleIndex(for: assignment.key)
+            } catch {
+                print("Failed to load hotkey assignments: \(error)")
             }
-        } catch {
-            print("Failed to load hotkey assignments: \(error)")
+        }
+
+        if let data = userDefaults.data(forKey: ignoredAppsKey) {
+            do {
+                let decoder = PropertyListDecoder()
+                let ignored = try decoder.decode([AppAssignment].self, from: data)
+                ignoredApps = ignored
+                ignoredBundleIds = Set(ignored.map { $0.bundleIdentifier })
+            } catch {
+                print("Failed to load ignored apps: \(error)")
+            }
         }
     }
 
@@ -286,6 +318,7 @@ final class HotkeyManager: ObservableObject {
 
         // Save enabled state
         userDefaults.set(isEnabled, forKey: isEnabledKey)
+        userDefaults.set(relaunchInactiveApps, forKey: relaunchInactiveAppsKey)
 
         // Save modifier config
         do {
@@ -301,6 +334,9 @@ final class HotkeyManager: ObservableObject {
             encoder.outputFormat = .binary // Binary plist is faster to read/write
             let data = try encoder.encode(Array(assignments.values))
             userDefaults.set(data, forKey: assignmentsKey)
+
+            let ignoredData = try encoder.encode(ignoredApps)
+            userDefaults.set(ignoredData, forKey: ignoredAppsKey)
         } catch {
             print("Failed to save hotkey assignments: \(error)")
         }
@@ -342,6 +378,24 @@ final class HotkeyManager: ObservableObject {
             self?.saveAssignments()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: saveWorkItem!)
+    }
+
+    func addIgnoredApp(bundleId: String, appName: String) {
+        guard !ignoredBundleIds.contains(bundleId) else { return }
+        let app = AppAssignment(bundleIdentifier: bundleId, appName: appName)
+        ignoredApps.append(app)
+        ignoredBundleIds.insert(bundleId)
+        scheduleSave()
+    }
+
+    func removeIgnoredApp(bundleId: String) {
+        ignoredApps.removeAll { $0.bundleIdentifier == bundleId }
+        ignoredBundleIds.remove(bundleId)
+        scheduleSave()
+    }
+
+    func isIgnored(bundleId: String) -> Bool {
+        ignoredBundleIds.contains(bundleId)
     }
 }
 
