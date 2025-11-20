@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.saveAssignments()
     }
 
+    @MainActor
     func showSettingsWindow() {
         let selectors: [Selector] = ["showSettingsWindow:", "showPreferencesWindow:"].map(NSSelectorFromString)
 
