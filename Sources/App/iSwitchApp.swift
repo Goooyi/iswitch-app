@@ -29,11 +29,12 @@ struct iSwitchApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let appManager = AppManager()
     let hotkeyManager = HotkeyManager()
     private var keyboardMonitor: KeyboardMonitor?
     private var windowSwitcher: WindowSwitcher?
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Check and request accessibility permissions
@@ -68,34 +69,97 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showSettingsWindow() {
         NSApp.activate(ignoringOtherApps: true)
 
+        // First try the system Settings handler (SwiftUI Settings scene)
         let selectors: [Selector] = ["showSettingsWindow:", "showPreferencesWindow:"].map(NSSelectorFromString)
-        for selector in selectors {
-            guard NSApp.responds(to: selector) else { continue }
-            if NSApp.sendAction(selector, to: nil, from: nil) { break }
+        var handled = false
+        for selector in selectors where NSApp.responds(to: selector) {
+            if NSApp.sendAction(selector, to: nil, from: nil) {
+                handled = true
+                break
+            }
         }
 
-        bringSettingsToFrontWithRetry()
-    }
-
-    @MainActor
-    private func bringSettingsToFrontWithRetry(attempts: Int = 3) {
-        guard attempts > 0 else { return }
-
-        if let window = NSApp.windows.first(where: { window in
-            guard let identifier = window.identifier?.rawValue else {
-                return window.title.contains("Settings") || window.title.contains("Preferences")
-            }
-            return identifier.localizedCaseInsensitiveContains("settings")
-                || identifier.localizedCaseInsensitiveContains("preferences")
-        }) {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
+        // If a settings window already exists, bring it forward.
+        if bringExistingSettingsWindowToFront() {
             return
         }
 
-        // Settings window creation can be async; retry shortly.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            self.bringSettingsToFrontWithRetry(attempts: attempts - 1)
+        // If the system action was sent, try once more on the next run loop to let it create the window.
+        if handled {
+            DispatchQueue.main.async { [weak self] in
+                if self?.bringExistingSettingsWindowToFront() == true {
+                    return
+                }
+                self?.presentEmbeddedSettingsWindow()
+            }
+        } else {
+            presentEmbeddedSettingsWindow()
+        }
+    }
+
+    @MainActor
+    private func bringExistingSettingsWindowToFront() -> Bool {
+        if let window = settingsWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+            return true
+        }
+
+        if let window = NSApp.windows.first(where: isSettingsWindow) {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+            settingsWindow = window
+            window.delegate = self
+            return true
+        }
+
+        return false
+    }
+
+    @MainActor
+    private func presentEmbeddedSettingsWindow() {
+        let hosting = NSHostingController(
+            rootView: SettingsView()
+                .environmentObject(hotkeyManager)
+                .environmentObject(appManager)
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = hosting
+        window.title = "Settings"
+        window.isReleasedWhenClosed = false
+        window.identifier = NSUserInterfaceItemIdentifier("iswitch.settings.window")
+        window.center()
+
+        settingsWindow = window
+        window.delegate = self
+
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    @MainActor
+    private func isSettingsWindow(_ window: NSWindow) -> Bool {
+        if let id = window.identifier?.rawValue.lowercased(),
+           id.contains("settings") || id.contains("preferences") {
+            return true
+        }
+        let title = window.title.lowercased()
+        return title.contains("settings") || title.contains("preferences")
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        if window === settingsWindow {
+            settingsWindow = nil
         }
     }
 
